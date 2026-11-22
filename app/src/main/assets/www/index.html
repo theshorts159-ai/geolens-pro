@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b0f19" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <title>GeoLens Pro — GPS Map Camera</title>
+  <style>
+    :root {
+      --accent: #10b981;
+      --accent-glow: rgba(16, 185, 129, 0.35);
+      --bg: #090d16;
+      --panel: rgba(15, 23, 42, 0.88);
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(9, 13, 22, 0.92);
+      border-bottom: 1px solid var(--border);
+      z-index: 20;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .logo-wrap {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 14px var(--accent-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.45s cubic-bezier(.34,1.56,.64,1);
+    }
+    .logo-wrap.spin { transform: rotate(180deg) scale(1.08); }
+    .brand-title { font-weight: 700; font-size: 15px; letter-spacing: 0.3px; }
+    .brand-sub { font-size: 10px; color: var(--accent); font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; }
+    .header-actions { display: flex; gap: 8px; }
+    .icon-btn {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 11px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .icon-btn.active { border-color: var(--accent); color: var(--accent); }
+    .viewport {
+      position: relative;
+      flex: 1;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    video { display: none; }
+    canvas#previewCanvas {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .hud-pill {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(9, 13, 22, 0.72);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      z-index: 10;
+    }
+    .hud-pill.hidden { display: none; }
+    .rec-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      color: #ef4444;
+      font-weight: 700;
+    }
+    .rec-badge.active { display: flex; }
+    .rec-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 50% { opacity: 0.25; } }
+    .controls {
+      background: rgba(9, 13, 22, 0.96);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 20;
+    }
+    .mode-switch {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+    }
+    .mode-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .mode-btn.active {
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+    }
+    .shutter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+    }
+    .thumb-btn {
+      width: 46px; height: 46px;
+      border-radius: 12px;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      overflow: hidden;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .thumb-btn img { width: 100%; height: 100%; object-fit: cover; }
+    .shutter-outer {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      border: 4px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .shutter-inner {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: #fff;
+      transition: all 0.2s ease;
+    }
+    .shutter-outer.video-mode .shutter-inner { background: #ef4444; }
+    .shutter-outer.recording .shutter-inner {
+      width: 26px; height: 26px; border-radius: 6px;
+    }
+    .drawer {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.85);
+      backdrop-filter: blur(10px);
+      z-index: 50;
+      display: none;
+      flex-direction: column;
+      padding: 18px;
+      overflow-y: auto;
+    }
+    .drawer.open { display: flex; }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .card h4 { font-size: 13px; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #090d16;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .preset-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .chip {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .primary-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #04130d;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .gallery-item {
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .gallery-item img, .gallery-item video {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      display: block;
+    }
+    .gallery-meta {
+      padding: 8px;
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand" id="logoBtn" title="Tap to switch theme & HUD">
+      <div class="logo-wrap" id="logoIcon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="var(--accent)" stroke-width="1.8" stroke-dasharray="4 2"/>
+          <polygon points="12,5 15,12 12,10 9,12" fill="var(--accent)"/>
+          <circle cx="12" cy="14" r="2.2" fill="#fff"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">GeoLens Pro</div>
+        <div class="brand-sub" id="themeLabel">EMERALD GPS</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="flipCamBtn">Flip</button>
+      <button class="icon-btn active" id="openSettingsBtn">Settings</button>
+    </div>
+  </header>
+
+  <div class="viewport">
+    <div class="hud-pill" id="hudPill">
+      <span id="gpsStatusText">GPS: Acquiring...</span>
+      <div class="rec-badge" id="recBadge"><span class="rec-dot"></span><span id="recTimer">00:00</span></div>
+      <span id="coordFormatBadge">DEC</span>
+    </div>
+    <video id="cameraVideo" playsinline autoplay muted></video>
+    <canvas id="previewCanvas"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="mode-switch">
+      <button class="mode-btn active" id="photoModeBtn">PHOTO</button>
+      <button class="mode-btn" id="videoModeBtn">VIDEO</button>
+    </div>
+    <div class="shutter-row">
+      <button class="thumb-btn" id="openGalleryBtn">Gallery</button>
+      <div class="shutter-outer" id="shutterBtn">
+        <div class="shutter-inner"></div>
+      </div>
+      <button class="thumb-btn" id="toggleStampBtn">Stamp ON</button>
+    </div>
+  </div>
+
+  <!-- Settings Drawer -->
+  <div class="drawer" id="settingsDrawer">
+    <div class="drawer-header">
+      <h3>GPS, Date & Time Settings</h3>
+      <button class="icon-btn" id="closeSettingsBtn">Done</button>
+    </div>
+
+    <div class="card">
+      <h4>Location & Coordinates</h4>
+      <div class="field">
+        <label>Location Source</label>
+        <select id="gpsModeSelect">
+          <option value="auto">Auto Device GPS (Live)</option>
+          <option value="manual">Manual Custom Coordinates</option>
+        </select>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Latitude</label>
+          <input type="number" step="0.000001" id="latInput" value="30.900965" />
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <input type="number" step="0.000001" id="lngInput" value="75.857277" />
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Altitude (m)</label>
+          <input type="number" id="altInput" value="247" />
+        </div>
+        <div class="field">
+          <label>Coordinate Format</label>
+          <select id="formatSelect">
+            <option value="DEC">Decimal (30.9010° N)</option>
+            <option value="DMS">DMS (30°54'03"N)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Location Label / Address</label>
+        <input type="text" id="addressInput" value="Ludhiana, Punjab, India" />
+      </div>
+      <div class="preset-chips">
+        <button class="chip" data-lat="30.900965" data-lng="75.857277" data-alt="247" data-addr="Ludhiana, Punjab, India">Ludhiana</button>
+        <button class="chip" data-lat="31.104815" data-lng="77.173401" data-alt="2206" data-addr="Shimla, Himachal Pradesh">Shimla</button>
+        <button class="chip" data-lat="28.613939" data-lng="77.209023" data-alt="216" data-addr="New Delhi, India">New Delhi</button>
+        <button class="chip" data-lat="25.204849" data-lng="55.270782" data-alt="5" data-addr="Dubai, UAE">Dubai</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h4>Date & Time Override</h4>
+      <div class="field">
+        <label>Clock Mode</label>
+        <select id="timeModeSelect">
+          <option value="auto">Live System Date & Time</option>
+          <option value="manual">Custom Date & Time</option>
+        </select>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Custom Date</label>
+          <input type="date" id="customDateInput" />
+        </div>
+        <div class="field">
+          <label>Custom Time</label>
+          <input type="time" step="1" id="customTimeInput" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Stamp Overlay Style</label>
+        <select id="stampStyleSelect">
+          <option value="card">Classic Geo Map Card</option>
+          <option value="minimal">Minimal Bottom Bar</option>
+          <option value="tactical">Tactical Telemetry HUD</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="primary-btn" id="saveSettingsBtn">Apply & Return to Camera</button>
+  </div>
+
+  <!-- Gallery Drawer -->
+  <div class="drawer" id="galleryDrawer">
+    <div class="drawer-header">
+      <h3>Captured Media</h3>
+      <button class="icon-btn" id="closeGalleryBtn">Close</button>
+    </div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+
+  <script>
+    const themes = [
+      { name: "EMERALD GPS", color: "#10b981", glow: "rgba(16, 185, 129, 0.35)" },
+      { name: "CYAN RADAR", color: "#06b6d4", glow: "rgba(6, 182, 212, 0.35)" },
+      { name: "AMBER FIELD", color: "#f59e0b", glow: "rgba(245, 158, 11, 0.35)" },
+      { name: "ROSE TACTICAL", color: "#f43f5e", glow: "rgba(244, 63, 94, 0.35)" }
+    ];
+    let themeIdx = 0;
+    let facingMode = "environment";
+    let mode = "photo";
+    let stampEnabled = true;
+    let isRecording = false;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recStartTime = 0;
+    let stream = null;
+    const captures = [];
+
+    const state = {
+      gpsMode: "auto",
+      lat: 30.900965,
+      lng: 75.857277,
+      alt: 247,
+      address: "Ludhiana, Punjab, India",
+      coordFormat: "DEC",
+      timeMode: "auto",
+      customDate: new Date().toISOString().slice(0, 10),
+      customTime: "12:00:00",
+      manualBaseEpoch: Date.now(),
+      manualSetAt: Date.now(),
+      stampStyle: "card"
+    };
+
+    const video = document.getElementById("cameraVideo");
+    const canvas = document.getElementById("previewCanvas");
+    const ctx = canvas.getContext("2d");
+
+    document.getElementById("customDateInput").value = state.customDate;
+    document.getElementById("customTimeInput").value = state.customTime;
+
+    // Interactive Logo
+    document.getElementById("logoBtn").addEventListener("click", () => {
+      themeIdx = (themeIdx + 1) % themes.length;
+      const t = themes[themeIdx];
+      document.documentElement.style.setProperty("--accent", t.color);
+      document.documentElement.style.setProperty("--accent-glow", t.glow);
+      document.getElementById("themeLabel").textContent = t.name;
+      const icon = document.getElementById("logoIcon");
+      icon.classList.remove("spin");
+      void icon.offsetWidth;
+      icon.classList.add("spin");
+      document.getElementById("hudPill").classList.toggle("hidden");
+    });
+
+    async function initCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true
+        });
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        document.getElementById("gpsStatusText").textContent = "Preview Mode (Grant Camera Permission)";
+      }
+    }
+
+    function initGPS() {
+      if (!("geolocation" in navigator)) return;
+      navigator.geolocation.watchPosition(
+        pos => {
+          if (state.gpsMode === "auto") {
+            state.lat = pos.coords.latitude;
+            state.lng = pos.coords.longitude;
+            state.alt = pos.coords.altitude ? Math.round(pos.coords.altitude) : state.alt;
+            document.getElementById("latInput").value = state.lat.toFixed(6);
+            document.getElementById("lngInput").value = state.lng.toFixed(6);
+            document.getElementById("gpsStatusText").textContent = "GPS: Live Lock (±" + Math.round(pos.coords.accuracy) + "m)";
+          }
+        },
+        () => {
+          if (state.gpsMode === "auto") {
+            document.getElementById("gpsStatusText").textContent = "GPS: Using Preset Coordinates";
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 5000 }
+      );
+    }
+
+    function toDMS(deg, isLat) {
+      const dir = isLat ? (deg >= 0 ? "N" : "S") : (deg >= 0 ? "E" : "W");
+      const abs = Math.abs(deg);
+      const d = Math.floor(abs);
+      const minFloat = (abs - d) * 60;
+      const m = Math.floor(minFloat);
+      const s = ((minFloat - m) * 60).toFixed(1);
+      return `${d}°${m}'${s}"${dir}`;
+    }
+
+    function formatCoords() {
+      if (state.coordFormat === "DMS") {
+        return `${toDMS(state.lat, true)}  ${toDMS(state.lng, false)}`;
+      }
+      const latDir = state.lat >= 0 ? "N" : "S";
+      const lngDir = state.lng >= 0 ? "E" : "W";
+      return `${Math.abs(state.lat).toFixed(6)}° ${latDir}, ${Math.abs(state.lng).toFixed(6)}° ${lngDir}`;
+    }
+
+    function getActiveDate() {
+      if (state.timeMode === "auto") return new Date();
+      const elapsed = Date.now() - state.manualSetAt;
+      return new Date(state.manualBaseEpoch + elapsed);
+    }
+
+    function drawStamp(w, h) {
+      if (!stampEnabled) return;
+      const now = getActiveDate();
+      const dateStr = now.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+      const timeStr = now.toLocaleTimeString("en-GB", { hour12: false });
+      const coordStr = formatCoords();
+      const accent = themes[themeIdx].color;
+
+      const pad = Math.round(w * 0.03);
+      const boxH = Math.round(h * 0.17);
+      const boxY = h - boxH - pad;
+
+      ctx.save();
+      if (state.stampStyle === "minimal") {
+        ctx.fillStyle = "rgba(9, 13, 22, 0.72)";
+        ctx.fillRect(0, h - Math.round(h * 0.11), w, Math.round(h * 0.11));
+        ctx.fillStyle = accent;
+        ctx.fillRect(0, h - Math.round(h * 0.11), w, 3);
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.max(13, Math.round(w * 0.022))}px sans-serif`;
+        ctx.fillText(`${state.address}  |  ${coordStr}`, pad, h - Math.round(h * 0.062));
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = `${Math.max(12, Math.round(w * 0.019))}px monospace`;
+        ctx.fillText(`${dateStr}  ${timeStr}  |  ALT ${state.alt}m`, pad, h - Math.round(h * 0.025));
+      } else {
+        // Map Card / Tactical HUD
+        ctx.fillStyle = "rgba(9, 13, 22, 0.80)";
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(pad, boxY, w - pad * 2, boxH, 14);
+        ctx.fill();
+        ctx.stroke();
+
+        // Mini radar map box on left
+        const mapSize = boxH - 20;
+        const mapX = pad + 10;
+        const mapY = boxY + 10;
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(mapX, mapY, mapSize, mapSize);
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(mapX + mapSize / 2, mapY);
+        ctx.lineTo(mapX + mapSize / 2, mapY + mapSize);
+        ctx.moveTo(mapX, mapY + mapSize / 2);
+        ctx.lineTo(mapX + mapSize, mapY + mapSize / 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = accent;
+        ctx.beginPath();
+        ctx.arc(mapX + mapSize / 2, mapY + mapSize / 2, mapSize * 0.32, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.arc(mapX + mapSize / 2, mapY + mapSize / 2, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Text metadata on right
+        const textX = mapX + mapSize + 14;
+        ctx.fillStyle = accent;
+        ctx.font = `bold ${Math.max(11, Math.round(w * 0.018))}px monospace`;
+        ctx.fillText(`GEOLENS PRO • ${state.gpsMode.toUpperCase()} GPS`, textX, mapY + 18);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${Math.max(14, Math.round(w * 0.024))}px sans-serif`;
+        ctx.fillText(state.address, textX, mapY + 42);
+
+        ctx.fillStyle = "#e2e8f0";
+        ctx.font = `${Math.max(12, Math.round(w * 0.02))}px monospace`;
+        ctx.fillText(`${coordStr}  •  Alt: ${state.alt}m`, textX, mapY + 66);
+
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = `${Math.max(12, Math.round(w * 0.019))}px monospace`;
+        ctx.fillText(`${dateStr}  |  ${timeStr}`, textX, mapY + 88);
+      }
+      ctx.restore();
+    }
+
+    function renderLoop() {
+      const targetW = video.videoWidth || 1280;
+      const targetH = video.videoHeight || 720;
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+
+      if (video.readyState >= 2) {
+        ctx.drawImage(video, 0, 0, targetW, targetH);
+      } else {
+        const grad = ctx.createLinearGradient(0, 0, targetW, targetH);
+        grad.addColorStop(0, "#0f172a");
+        grad.addColorStop(1, "#1e293b");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, targetW, targetH);
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "20px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Camera Standby — Tap Allow Camera or Test Capture", targetW / 2, targetH / 2 - 30);
+        ctx.textAlign = "left";
+      }
+
+      drawStamp(targetW, targetH);
+
+      if (isRecording) {
+        const sec = Math.floor((Date.now() - recStartTime) / 1000);
+        const mm = String(Math.floor(sec / 60)).padStart(2, "0");
+        const ss = String(sec % 60).padStart(2, "0");
+        document.getElementById("recTimer").textContent = `${mm}:${ss}`;
+      }
+
+      requestAnimationFrame(renderLoop);
+    }
+
+    function capturePhoto() {
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      const filename = `GeoLens_${Date.now()}.jpg`;
+      captures.unshift({ type: "photo", url: dataUrl, name: filename });
+      updateGalleryThumb(dataUrl);
+      triggerDownload(dataUrl, filename);
+    }
+
+    function toggleVideoRecording() {
+      const shutter = document.getElementById("shutterBtn");
+      const badge = document.getElementById("recBadge");
+      if (!isRecording) {
+        recordedChunks = [];
+        const canvasStream = canvas.captureStream(30);
+        if (stream && stream.getAudioTracks().length > 0) {
+          canvasStream.addTrack(stream.getAudioTracks()[0]);
+        }
+        const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9" : "video/webm";
+        mediaRecorder = new MediaRecorder(canvasStream, { mimeType: mime });
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: "video/webm" });
+          const url = URL.createObjectURL(blob);
+          const filename = `GeoLens_${Date.now()}.webm`;
+          captures.unshift({ type: "video", url, name: filename });
+          triggerDownload(url, filename);
+        };
+        mediaRecorder.start(200);
+        isRecording = true;
+        recStartTime = Date.now();
+        shutter.classList.add("recording");
+        badge.classList.add("active");
+      } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        shutter.classList.remove("recording");
+        badge.classList.remove("active");
+      }
+    }
+
+    function triggerDownload(url, filename) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function updateGalleryThumb(url) {
+      const btn = document.getElementById("openGalleryBtn");
+      btn.innerHTML = `<img src="${url}" alt="Last" />`;
+    }
+
+    // Event bindings
+    document.getElementById("shutterBtn").addEventListener("click", () => {
+      if (mode === "photo") capturePhoto();
+      else toggleVideoRecording();
+    });
+
+    document.getElementById("photoModeBtn").addEventListener("click", () => {
+      if (isRecording) return;
+      mode = "photo";
+      document.getElementById("photoModeBtn").classList.add("active");
+      document.getElementById("videoModeBtn").classList.remove("active");
+      document.getElementById("shutterBtn").classList.remove("video-mode");
+    });
+
+    document.getElementById("videoModeBtn").addEventListener("click", () => {
+      mode = "video";
+      document.getElementById("videoModeBtn").classList.add("active");
+      document.getElementById("photoModeBtn").classList.remove("active");
+      document.getElementById("shutterBtn").classList.add("video-mode");
+    });
+
+    document.getElementById("flipCamBtn").addEventListener("click", () => {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+      initCamera();
+    });
+
+    document.getElementById("toggleStampBtn").addEventListener("click", e => {
+      stampEnabled = !stampEnabled;
+      e.target.textContent = stampEnabled ? "Stamp ON" : "Stamp OFF";
+    });
+
+    document.getElementById("openSettingsBtn").addEventListener("click", () => {
+      document.getElementById("settingsDrawer").classList.add("open");
+    });
+    document.getElementById("closeSettingsBtn").addEventListener("click", () => {
+      document.getElementById("settingsDrawer").classList.remove("open");
+    });
+
+    document.querySelectorAll(".chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.getElementById("gpsModeSelect").value = "manual";
+        document.getElementById("latInput").value = chip.dataset.lat;
+        document.getElementById("lngInput").value = chip.dataset.lng;
+        document.getElementById("altInput").value = chip.dataset.alt;
+        document.getElementById("addressInput").value = chip.dataset.addr;
+      });
+    });
+
+    document.getElementById("saveSettingsBtn").addEventListener("click", () => {
+      state.gpsMode = document.getElementById("gpsModeSelect").value;
+      state.lat = parseFloat(document.getElementById("latInput").value) || 0;
+      state.lng = parseFloat(document.getElementById("lngInput").value) || 0;
+      state.alt = parseFloat(document.getElementById("altInput").value) || 0;
+      state.address = document.getElementById("addressInput").value || "Custom Location";
+      state.coordFormat = document.getElementById("formatSelect").value;
+      state.timeMode = document.getElementById("timeModeSelect").value;
+      state.stampStyle = document.getElementById("stampStyleSelect").value;
+
+      const d = document.getElementById("customDateInput").value;
+      const t = document.getElementById("customTimeInput").value;
+      if (d && t) {
+        state.manualBaseEpoch = new Date(`${d}T${t}`).getTime();
+        state.manualSetAt = Date.now();
+      }
+      document.getElementById("coordFormatBadge").textContent = state.coordFormat;
+      document.getElementById("gpsStatusText").textContent =
+        state.gpsMode === "manual" ? "GPS: Manual Override" : "GPS: Auto Live";
+      document.getElementById("settingsDrawer").classList.remove("open");
+    });
+
+    document.getElementById("openGalleryBtn").addEventListener("click", () => {
+      const grid = document.getElementById("galleryGrid");
+      grid.innerHTML = captures.length === 0
+        ? "<p style='color:#94a3b8;font-size:13px;'>No photos or videos captured yet.</p>"
+        : captures.map(item => `
+          <div class="gallery-item">
+            ${item.type === "photo"
+              ? `<img src="${item.url}" />`
+              : `<video src="${item.url}" controls></video>`}
+            <div class="gallery-meta">
+              <span>${item.type.toUpperCase()}</span>
+              <a href="${item.url}" download="${item.name}" style="color:var(--accent);text-decoration:none;font-weight:700;">Save</a>
+            </div>
+          </div>
+        `).join("");
+      document.getElementById("galleryDrawer").classList.add("open");
+    });
+
+    document.getElementById("closeGalleryBtn").addEventListener("click", () => {
+      document.getElementById("galleryDrawer").classList.remove("open");
+    });
+
+    initCamera();
+    initGPS();
+    requestAnimationFrame(renderLoop);
+  </script>
+</body>
+</html>
